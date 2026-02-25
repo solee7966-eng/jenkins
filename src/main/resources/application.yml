@@ -1,0 +1,52 @@
+spring:   
+  application:
+    name: jenkins
+
+  profiles: 
+    active: local
+      
+  thymeleaf:
+      cache: false
+      prefix: classpath:/templates/
+      suffix: .html
+      
+  datasource: 
+    driver-class-name: oracle.jdbc.OracleDriver
+    url: jdbc:oracle:thin:@211.63.89.70:1521:xe     
+    username: sistuser
+    password: sistsix
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari: 
+      minimum-idle: 5        
+      maximum-pool-size: 10    
+      idle-timeout: 30000     
+      max-lifetime: 1800000   
+      connection-timeout: 30000 
+
+  messages: 
+    basename: messages.validation
+    encoding: UTF-8
+   
+  devtools: 
+    livereload:
+      enabled: true
+
+    restart: 
+      enabled: true 
+
+mybatis:
+  mapper-locations: classpath:mybatis/mapper/**/*.xml
+  type-aliases-package: com.spring.app.domain
+
+logging: 
+  level:
+    '[com.spring.app]': debug 
+   
+server:
+  port: 9090
+  servlet:
+    context-path: /jenkins 
+    encoding:
+      charset: UTF-8
+      enabled: true 
+      force: true 
