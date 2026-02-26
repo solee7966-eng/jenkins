@@ -48,16 +48,11 @@ jobs:
       - name: Add known hosts
         run: ssh-keyscan -H ed25519 13.125.156.182 >> ~/.ssh/known_hosts
       # 실행 
-      # container명 => 같으면 안된다 
-      # 1. 정지 docker stop container속에들어있는프로세스아이디명.  맨 아래의 docker run -d --name spring-jenkins -p 9090:9090 에서 spring-jenkins 이 프로세스아이디명인데 아무거나 주어도 된다.
-      # 2. 삭제 docker rm container속에들어있는프로세스아이디명
-      # 3. dockerhub에서 읽기 pull 
-      # 4. 실행명령 : run 
-      - name: Deploy on server using DockerHub image
+      # 실행명령 : run 
+      - name: Deploy on server using Docker Compose
         run: |
           ssh ubuntu@13.125.156.182 << 'EOF'
-            docker stop spring-jenkins || true
-            docker rm spring-jenkins || true
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/spring-jenkins:latest
-            docker run -d --name spring-jenkins -p 9090:9090 ${{ secrets.DOCKERHUB_USERNAME }}/spring-jenkins:latest
+            cd ~/app
+            docker compose pull
+            docker compose up -d
           EOF
