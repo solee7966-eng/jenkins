@@ -7,7 +7,7 @@
     <select id="musicList" resultType="GenieMusicDTO">
 	    select title, singer, poster 
 		from genie_music
-		order by rank asc
+		order by rank desc
 	</select>
     
 </mapper>
