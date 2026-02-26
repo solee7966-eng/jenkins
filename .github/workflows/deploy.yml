@@ -1,62 +1,63 @@
-name: Deploy to Ubuntu Server
+name: Deploy with DockerHub to Ubuntu Server
 
 on:
   push:
+    #브런치 => main에서 Commit 
     branches:
-      - main  # main 브랜치에 푸시될 때 트리거
-
+      - main
+# Commit시에 작업 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # 코드 체크아웃
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      # 현재 repository 안에서 체크 아웃 설정 
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-    # JDK 17 설정
-    - name: Set up JDK 17
-      uses: actions/setup-java@v1
-      with:
-        java-version: '17'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          # Java JDK17 설치 및 환경변수 => 17버전으로 빌드하기 위한 설정 
 
-    # gradlew 권한 설정
-    - name: Set gradlew permissions
-      run: |
-        chmod +x ./gradlew
+        # gradlew => 우분투에서 실행 권한이 없는 경우 => 실행 권한 추가 
+        # +r(읽기) +w(쓰기) +x(실행) 
+      - name: Set gradlew permissions
+        run: chmod +x ./gradlew
+       
+      - name: Build with Gradle
+        run: ./gradlew clean build
+        # .jar파일 생성 => clean은 전체 삭제 => 다시 build
+      - name: Log in to DockerHub
+        run: echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+        # docker 로그인 
 
-    # gradle 빌드
-    - name: Build with Gradle
-      run: ./gradlew build
-
-    - name: Set SSH key permissions
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
-        chmod 600 ~/.ssh/id_ed25519
-
-    - name: Add SSH key
-      uses: webfactory/ssh-agent@v0.5.3
-      with:
-        ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
-
-
-    - name: Add known_hosts
-      run: |
-        ssh-keyscan -H ed25519 13.125.156.182 >> ~/.ssh/known_hosts
-
-    #- name: 기존프로세스 종료
-    #  run: |
-    #    kill -9 $(ps -ef | grep devops | grep -v grep | head -n 1 | awk '{print $2}') || true
-
-    - name: Deploy to Server with rsync
-      run: | 
-         rsync -avz -e "ssh -o StrictHostKeyChecking=no" build/libs/*.jar ubuntu@13.125.156.182:~/app
-
-
-    - name: Run SSH commands
-      run: |
-        ssh -i ~/.ssh/id_ed25519 ubuntu@13.125.156.182 << 'EOF'
-          pkill -f 'java -jar' || true
-          nohup java -jar ~/app/jenkins-0.0.1-SNAPSHOT.jar > log.txt 2>&1 &
-        EOF
+        # docker build : image를 생성 => dockerhub에 전송  
+      - name: Build and Push Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/spring-jenkins:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/spring-jenkins:latest
+      # SSH => 개인키를 가지고 AWS에 접속 
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+      # 등록 => 서버키가 등록 
+      - name: Add known hosts
+        run: ssh-keyscan -H ed25519 13.125.156.182 >> ~/.ssh/known_hosts
+      # 실행 
+      # container명 => 같으면 안된다 
+      # 1. 정지 docker stop container속에들어있는프로세스아이디명.  맨 아래의 docker run -d --name spring-jenkins -p 9090:9090 에서 spring-jenkins 이 프로세스아이디명인데 아무거나 주어도 된다.
+      # 2. 삭제 docker rm container속에들어있는프로세스아이디명
+      # 3. dockerhub에서 읽기 pull 
+      # 4. 실행명령 : run 
+      - name: Deploy on server using DockerHub image
+        run: |
+          ssh ubuntu@13.125.156.182 << 'EOF'
+            docker stop spring-jenkins || true
+            docker rm spring-jenkins || true
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/spring-jenkins:latest
+            docker run -d --name spring-jenkins -p 9090:9090 ${{ secrets.DOCKERHUB_USERNAME }}/spring-jenkins:latest
+          EOF
