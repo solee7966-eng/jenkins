@@ -1,81 +1,70 @@
 pipeline {
     agent any
 
-    // 전역변수 => ${SERVER_IP}
     environment {
-        SERVER_IP   = "13.125.156.182"
-        SERVER_USER = "ubuntu"
-        APP_DIR     = "~/app"
-        JAR_NAME    = "jenkins-0.0.1-SNAPSHOT.jar"
+        DOCKER_IMAGE = "tott1111/spring-jenkins"
+        SERVER_IP = "13.125.156.182"
+        CONTAINER_NAME = "spring-jenkins"
+    }
+
+    tools {
+        jdk 'jdk17'   // Jenkins 관리 > Tools > JDK installations 의 JDK Name 에 입력한 이름
     }
 
     stages {
 
-        /*
-        // 연결 확인 = ngrok
-        stage('Check Git Info') {
+        stage('Checkout') {
             steps {
-                sh '''
-                    echo "===Git Info==="
-                    git branch
-                    git log -1
-                '''
-            }
-        }
-        */
-
-        // 감지 = main : push (commit)
-        stage('Check Out') {
-            steps {
-                echo 'Git Checkout'
                 checkout scm
             }
         }
 
-        // gradle build => jar파일을 다시 생성
-        stage('Gradle Permission') {
+        stage('Build with Gradle') {
             steps {
-                sh '''
-                    chmod +x gradlew
-                '''
+                sh 'chmod +x ./gradlew'
+                sh './gradlew clean build'
             }
         }
 
-        // build 시작
-        stage('Gradle Build') {
+        stage('Docker Build & Push') {
             steps {
-                sh '''
-                    ./gradlew clean build
-                '''
-            }
-        }
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub_info', // 반드시 Jenkins 설치시 New credentials 에서 Username with password 에서 입력하였던 ID 이름을 넣어야 함. 
+                    usernameVariable: 'DOCKER_USER', // Jenkins 내부에서 쓰는 환경 변수 이름이므로 그대로 써야함. 바꾸면 안됨. 
+                    passwordVariable: 'DOCKER_PASS'  // Jenkins 내부에서 쓰는 환경 변수 이름이므로 그대로 써야함. 바꾸면 안됨. 
+                )]) {
 
-        // jar파일 전송 = rsync / scp
-        stage('Deploy = rsync') {
-            steps {
-                sshagent(credentials: ['SERVER_SSH_KEY']) {
-                    sh """
-                        rsync -avz -e 'ssh -o StrictHostKeyChecking=no' \
-                        build/libs/*.jar \
-                        ${SERVER_USER}@${SERVER_IP}:${APP_DIR}
-                    """
+                    sh '''
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker build -t $DOCKER_IMAGE:latest .
+                        docker push $DOCKER_IMAGE:latest
+                    '''
                 }
             }
         }
 
-        // 실행 명령
-        stage('Run Application') {
+        stage('Deploy to Server') {
             steps {
-                sshagent(credentials: ['SERVER_SSH_KEY']) {
+                sshagent(['SERVER_SSH_KEY']) {  // 반드시 Jenkins 설치시 New credentials 에서 SSH Username with private key 에서 입력하였던 ID 이름을 넣어야 함.
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${SERVER_USER}@${SERVER_IP} << 'EOF'
-                        pkill -f "java -jar" || true
-                        nohup java -jar ~/app/${JAR_NAME} > log.txt 2>&1 &
-EOF
+                        ssh -o StrictHostKeyChecking=no ubuntu@$SERVER_IP '
+                            docker stop $CONTAINER_NAME || true
+                            docker rm $CONTAINER_NAME || true
+                            docker pull $DOCKER_IMAGE:latest
+                            docker run -d --name $CONTAINER_NAME -p 9090:9090 $DOCKER_IMAGE:latest
+                        '
                     """
                 }
             }
         }
+    }
 
+    post {
+        success {
+            echo "Deployment completed successfully."
+        }
+        failure {
+            echo "Deployment failed."
+        }
     }
 }
