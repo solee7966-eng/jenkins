@@ -1,12 +1,12 @@
 pipeline {
 	agent any
-	
+
 	// 전역변수 => ${SERVER_IP}
 	environment {
 			APP_DIR = "~/app"
 			JAR_NAME = "jenkins-0.0.1-SNAPSHOT.jar"
 	}
-		
+
 	stages {
 		/*
 			git push = commit
